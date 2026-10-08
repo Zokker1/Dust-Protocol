@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DUST PROTOCOL — CS2-style browser FPS</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23151a1e'/><path d='M8 2v4M8 10v4M2 8h4M10 8h4' stroke='%233aff3a' stroke-width='2'/></svg>">
+<style>
+  :root {
+    --xh-color: #3aff3a;
+    --xh-len: 8px;
+    --xh-gap: 5px;
+    --xh-th: 2px;
+    --gold: #d9a826;
+    --panel: rgba(13, 17, 21, 0.66);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0e11; }
+  body {
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    color: #e8edf2;
+  }
+  canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+  svg { pointer-events: none; }
+
+  /* ============ HUD ============ */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  #hud * { text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+
+  /* crosshair */
+  #xhair { position: fixed; left: 50%; top: 50%; width: 0; height: 0; }
+  .xh { position: absolute; left: 0; top: 0; background: var(--xh-color); outline: 1px solid rgba(0,0,0,0.5); }
+  .xh-t { width: var(--xh-th); height: var(--xh-len); transform: translate(-50%, calc(-100% - var(--xh-gap))); }
+  .xh-b { width: var(--xh-th); height: var(--xh-len); transform: translate(-50%, var(--xh-gap)); }
+  .xh-l { height: var(--xh-th); width: var(--xh-len); transform: translate(calc(-100% - var(--xh-gap)), -50%); }
+  .xh-r { height: var(--xh-th); width: var(--xh-len); transform: translate(var(--xh-gap), -50%); }
+  .xh-dot { display: none; position: absolute; width: var(--xh-th); height: var(--xh-th); background: var(--xh-color); transform: translate(-50%, -50%); outline: 1px solid rgba(0,0,0,0.5); }
+  #xhair.show-dot .xh-dot { display: block; }
+
+  #targetName {
+    position: fixed; left: 50%; top: calc(50% + 30px); transform: translateX(-50%);
+    color: #ff5c5c; font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+  }
+
+  /* top bar */
+  #topbar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; }
+  #topbar .score {
+    width: 58px; padding: 3px 0 6px; text-align: center; font-size: 22px; font-weight: 800; color: #fff;
+    position: relative;
+  }
+  #topbar .score::after {
+    position: absolute; left: 0; right: 0; bottom: -1px; font-size: 8px; font-weight: 600; letter-spacing: 1px; opacity: 0.85;
+  }
+  #scoreYou { background: rgba(52, 116, 198, 0.78); border-radius: 3px 0 0 3px; }
+  #scoreYou::after { content: "YOU"; }
+  #scoreTop { background: rgba(196, 154, 51, 0.78); border-radius: 0 3px 3px 0; }
+  #scoreTop::after { content: "TOP BOT"; }
+  #timer { background: var(--panel); padding: 6px 16px; font-size: 21px; font-weight: 700; color: #ecf0f4; }
+
+  /* radar */
+  #radarWrap { position: fixed; top: 12px; left: 12px; }
+  #radar { display: block; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+  #radarLabel { margin-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: rgba(255,255,255,0.8); text-transform: uppercase; }
+
+  /* vitals */
+  #vitals { position: fixed; left: 14px; bottom: 14px; display: flex; gap: 6px; }
+  .vital {
+    display: flex; align-items: center; gap: 9px; padding: 7px 16px 7px 11px;
+    background: linear-gradient(rgba(13,17,21,0.55), rgba(13,17,21,0.72)); border-radius: 3px;
+  }
+  .vital svg { width: 19px; height: 19px; fill: #fff; opacity: 0.92; }
+  .vital .num { font-size: 30px; font-weight: 800; color: #fff; line-height: 1; min-width: 46px; }
+  .vital.low .num { color: #ff4d4d; }
+
+  /* ammo */
+  #ammoWrap { position: fixed; right: 16px; bottom: 14px; text-align: right; }
+  #weaponLabel {
+    display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.85);
+  }
+  #weaponLabel .wicon { width: 46px; height: 17px; fill: #fff; opacity: 0.92; }
+  #ammoRow {
+    display: flex; align-items: baseline; justify-content: flex-end; gap: 7px;
+    background: linear-gradient(rgba(13,17,21,0.55), rgba(13,17,21,0.72)); border-radius: 3px; padding: 6px 14px;
+  }
+  #ammoMag { font-size: 31px; font-weight: 800; color: #fff; line-height: 1; }
+  #ammoMag.low { color: #ff4d4d; }
+  #ammoReserve { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.7); }
+
+  /* killfeed */
+  #killfeed { position: fixed; top: 12px; right: 14px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+  .kf {
+    display: flex; align-items: center; gap: 7px; padding: 3px 10px; border-radius: 3px;
+    background: rgba(10, 13, 17, 0.74); font-size: 13px; font-weight: 700;
+  }
+  .kf.me { box-shadow: inset 0 0 0 2px rgba(214, 60, 48, 0.9); }
+  .kf .k { color: #e8b94d; }
+  .kf .v { color: #7fb3e8; }
+  .kf .wicon { width: 40px; height: 15px; fill: #e8edf2; }
+  .kf .hs { width: 15px; height: 15px; fill: #ff6b5e; color: #ff6b5e; }
+
+  /* hit direction + flashes */
+  #hitRing { position: fixed; left: 50%; top: 50%; width: 0; height: 0; }
+  .hitdir {
+    position: absolute; left: -100px; top: -100px; width: 200px; height: 200px;
+    border-radius: 50%; border: 6px solid transparent; border-top-color: rgba(255, 36, 28, 0.9);
+  }
+  #dmgFlash {
+    position: fixed; inset: 0; opacity: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(255,0,0,0) 35%, rgba(190, 10, 5, 0.6) 100%);
+  }
+  #vignette {
+    position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(110, 4, 0, 0.72) 100%);
+  }
+  #centerMsg {
+    position: fixed; left: 50%; top: 27%; transform: translateX(-50%); opacity: 0; transition: opacity 0.35s;
+    font-size: 27px; font-weight: 800; letter-spacing: 3px; color: #fff;
+  }
+
+  /* scope */
+  #scope { position: fixed; inset: 0; pointer-events: none; z-index: 11; }
+  #scope::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(circle at center, transparent calc(min(100vh, 100vw) * 0.40), rgba(0,0,0,0.985) calc(min(100vh, 100vw) * 0.405));
+  }
+  #scope .sline.h { position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: rgba(0,0,0,0.92); }
+  #scope .sline.v { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: rgba(0,0,0,0.92); }
+
+  /* ============ buy menu ============ */
+  #buy {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(4, 6, 9, 0.55); backdrop-filter: blur(3px);
+  }
+  .buy-panel {
+    background: rgba(15, 19, 24, 0.97); border: 1px solid #2b333b; border-radius: 6px; padding: 22px 28px 16px;
+    box-shadow: 0 18px 60px rgba(0,0,0,0.6);
+  }
+  .buy-head h2 { font-size: 19px; font-weight: 800; letter-spacing: 2.5px; color: #f0f3f6; }
+  .buy-head p { font-size: 12px; color: #8b97a3; margin: 3px 0 16px; }
+  .buy-head b { color: #d9a826; }
+  #buyCols { display: flex; gap: 14px; }
+  .buy-col h3 { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #8b97a3; margin-bottom: 8px; }
+  .buy-item {
+    display: flex; flex-direction: column; align-items: center; width: 148px; position: relative;
+    background: #1a2026; border: 1px solid #2b333b; border-radius: 4px; padding: 14px 8px 10px; margin-bottom: 10px;
+    cursor: pointer; color: #dfe6ec; font-family: inherit;
+  }
+  .buy-item:hover { border-color: var(--gold); background: #222a32; }
+  .buy-item .wicon { width: 92px; height: 34px; fill: #ccd6df; }
+  .buy-item .bname { font-size: 13px; font-weight: 700; margin-top: 7px; }
+  .buy-item .bprice { font-size: 12px; font-weight: 600; color: #9cc265; margin-top: 2px; }
+  .buy-item .bkey {
+    position: absolute; top: 6px; left: 7px; font-size: 10px; font-weight: 700; color: #8b97a3;
+    border: 1px solid #39424b; border-radius: 2px; padding: 0 5px; line-height: 14px;
+  }
+
+  /* ============ scoreboard ============ */
+  #scoreboard {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 20; width: 580px;
+    background: rgba(11, 15, 19, 0.95); border: 1px solid #272f37; border-radius: 6px; padding: 18px 22px; pointer-events: none;
+  }
+  #scoreboard h2 { font-size: 15px; font-weight: 800; letter-spacing: 2px; color: #f0f3f6; margin-bottom: 12px; }
+  .sb-head, .sb-row { display: grid; grid-template-columns: 1fr 64px 64px 64px; padding: 5px 12px; align-items: center; }
+  .sb-head { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #8b97a3; }
+  .sb-head span:not(.n), .sb-row span:not(.n) { text-align: center; }
+  .sb-row { font-size: 14px; font-weight: 600; border-radius: 3px; color: #cfd8e0; }
+  .sb-row:nth-child(odd) { background: rgba(255,255,255,0.035); }
+  .sb-row.you { background: rgba(62, 122, 196, 0.3); color: #fff; }
+
+  /* ============ overlays / menus ============ */
+  .overlay { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; }
+  .panel {
+    background: rgba(14, 18, 23, 0.97); border: 1px solid #2b333b; border-radius: 8px; padding: 30px 36px;
+    box-shadow: 0 20px 70px rgba(0,0,0,0.65); min-width: 380px;
+  }
+  .btn {
+    display: block; width: 100%; padding: 12px 18px; margin-top: 10px; border: 1px solid #39424b; border-radius: 4px;
+    background: #1b2128; color: #dfe6ec; font-family: inherit; font-size: 14px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: pointer; text-align: left; transition: border-color 0.12s, background 0.12s;
+  }
+  .btn:hover { border-color: var(--gold); background: #232b33; }
+  .btn.primary { background: var(--gold); border-color: var(--gold); color: #181203; }
+  .btn.primary:hover { background: #e9bc45; }
+  .btn.zombie-mode {
+    background: #7f1118; border-color: #d02c33; color: #fff0f0;
+    box-shadow: inset 0 0 18px rgba(255, 24, 34, 0.18), 0 0 14px rgba(133, 17, 24, 0.22);
+  }
+  .btn.zombie-mode:hover { background: #a51620; border-color: #ff4b55; }
+
+  #menu { justify-content: flex-start; background: linear-gradient(115deg, rgba(7,9,12,0.93) 30%, rgba(9,12,16,0.55) 70%, rgba(7,9,12,0.85)); }
+  #menu.zombie-theme {
+    background:
+      radial-gradient(circle at 76% 40%, rgba(130, 12, 18, 0.36), transparent 34%),
+      radial-gradient(circle at 28% 72%, rgba(86, 5, 7, 0.34), transparent 30%),
+      linear-gradient(115deg, rgba(8,4,5,0.96) 28%, rgba(34,6,8,0.74) 66%, rgba(4,2,3,0.92));
+  }
+  #menuInner { margin-left: 7vw; width: 360px; }
+  #logo { position: relative; display: inline-block; font-size: 52px; font-weight: 900; font-style: italic; letter-spacing: -1px; line-height: 1; color: #fff; transform: skewX(-4deg); }
+  #logo b { color: var(--gold); font-weight: 900; }
+  #zombieStamp {
+    display: none; position: absolute; left: 35px; top: 4px; transform: rotate(-16deg) skewX(4deg);
+    padding: 3px 12px 4px; border: 3px solid rgba(255, 45, 45, 0.88); border-radius: 3px;
+    color: #ff2d2d; background: rgba(26, 0, 0, 0.34); font-size: 31px; line-height: 1;
+    letter-spacing: 5px; text-shadow: 0 0 12px rgba(255,0,0,0.9); mix-blend-mode: screen;
+  }
+  #menu.zombie-theme #logo b { color: #ff3b3b; text-shadow: 0 0 12px rgba(255,0,0,0.55); }
+  #menu.zombie-theme #zombieStamp { display: block; }
+  #menuSub { margin: 10px 0 30px; font-size: 12.5px; font-weight: 600; letter-spacing: 2.5px; color: #93a0ac; text-transform: uppercase; }
+  #menu.zombie-theme #menuSub { color: #d96b6b; text-shadow: 0 0 10px rgba(255,0,0,0.35); }
+  #menuFoot { margin-top: 34px; font-size: 11px; color: #5c6873; line-height: 1.6; }
+  #menu.zombie-theme #menuFoot { color: #8f5f62; }
+  #menu .zombie-only { display: none; }
+  #menu.zombie-theme .normal-mode { display: none; }
+  #menu.zombie-theme .zombie-only { display: block; }
+  #howPanel { margin-top: 16px; background: rgba(20,25,31,0.9); border: 1px solid #2b333b; border-radius: 5px; padding: 14px 18px; font-size: 13px; }
+  #howPanel div { display: flex; justify-content: space-between; padding: 2.5px 0; color: #cfd8e0; }
+  #howPanel b { color: #fff; font-weight: 700; min-width: 110px; }
+
+  #pause .panel h2, #settings .panel h2, #end .panel h2 { font-size: 22px; font-weight: 800; letter-spacing: 2px; margin-bottom: 14px; }
+  #pause { background: rgba(5, 7, 10, 0.6); backdrop-filter: blur(2px); }
+  #settings { background: rgba(5, 7, 10, 0.7); }
+  .set-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 7px 0; font-size: 14px; font-weight: 600; color: #cfd8e0; }
+  .set-row input[type=range] { width: 190px; accent-color: var(--gold); }
+  .set-row select, .set-row input[type=color] { background: #1b2128; color: #dfe6ec; border: 1px solid #39424b; border-radius: 3px; padding: 4px 8px; font-family: inherit; }
+  .set-row .val { color: #8b97a3; font-size: 12px; min-width: 34px; text-align: right; }
+
+  /* death banner */
+  #death { position: fixed; left: 0; right: 0; bottom: 21%; z-index: 15; text-align: center; pointer-events: none; }
+  #deathBy { font-size: 21px; font-weight: 700; color: #f2d3cf; }
+  #deathBy b { color: #ff6b5e; }
+  #deathBy .wicon { width: 44px; height: 17px; fill: #f2d3cf; vertical-align: middle; }
+  #deathTimer { margin-top: 6px; font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.8); }
+  #deathTip { margin-top: 14px; font-size: 12.5px; font-style: italic; color: rgba(255,255,255,0.6); }
+  #death > div { text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+
+  #end .panel { width: 600px; }
+  #endTitle { color: var(--gold); }
+  #endSub { font-size: 13px; color: #9aa6b2; margin: -8px 0 14px; }
+  #endBtns { display: flex; gap: 10px; margin-top: 16px; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "./lib/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- ============ in-game HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="score" id="scoreYou">0</div>
+    <div id="timer">10:00</div>
+    <div class="score" id="scoreTop">0</div>
+  </div>
+
+  <div id="radarWrap">
+    <canvas id="radar" width="200" height="200"></canvas>
+    <div id="radarLabel">de_dustette</div>
+  </div>
+
+  <div id="xhair"></div>
+  <div id="targetName"></div>
+  <div id="hitRing"></div>
+  <div id="dmgFlash"></div>
+  <div id="vignette"></div>
+  <div id="centerMsg"></div>
+
+  <div id="vitals">
+    <div class="vital" id="hpVital">
+      <svg viewBox="0 0 24 24"><path d="M10 2h4v8h8v4h-8v8h-4v-8H2v-4h8z"/></svg>
+      <span class="num" id="hpNum">100</span>
+    </div>
+    <div class="vital">
+      <svg viewBox="0 0 24 24"><path d="M12 1l9 3.5v6c0 5.6-3.8 9.6-9 12.5C6.8 20.1 3 16.1 3 10.5v-6z"/></svg>
+      <span class="num" id="armNum">0</span>
+    </div>
+  </div>
+
+  <div id="ammoWrap">
+    <div id="weaponLabel"></div>
+    <div id="ammoRow">
+      <span id="ammoMag">12</span>
+      <span id="ammoReserve">/ 24</span>
+    </div>
+  </div>
+
+  <div id="killfeed"></div>
+  <div id="scope" class="hidden"><div class="sline h"></div><div class="sline v"></div></div>
+</div>
+
+<!-- ============ buy menu ============ -->
+<div id="buy" class="hidden">
+  <div class="buy-panel">
+    <div class="buy-head">
+      <h2>LOADOUT</h2>
+      <p>Deathmatch — all equipment is free · press <b>number key</b> or click · <b>B</b> to close</p>
+    </div>
+    <div id="buyCols"></div>
+  </div>
+</div>
+
+<!-- ============ scoreboard ============ -->
+<div id="scoreboard" class="hidden">
+  <h2>DEATHMATCH &mdash; DE_DUSTETTE</h2>
+  <div class="sb-head"><span class="n">PLAYER</span><span>K</span><span>D</span><span>PING</span></div>
+  <div id="sbRows"></div>
+</div>
+
+<!-- ============ death banner ============ -->
+<div id="death" class="hidden">
+  <div id="deathBy"></div>
+  <div id="deathTimer"></div>
+  <div id="deathTip"></div>
+</div>
+
+<!-- ============ main menu ============ -->
+<div id="menu" class="overlay">
+  <div id="menuInner">
+    <div id="logo">DUST<b>PROTOCOL</b><span id="zombieStamp">ZOMBIE</span></div>
+    <div id="menuSub">A CS2-style browser FPS &middot; de_dustette</div>
+    <button class="btn primary normal-mode" id="btnPlay">&#9654;&nbsp; Play vs Bots</button>
+    <button class="btn primary normal-mode" id="btnOnline">&#9654;&nbsp; Play Online</button>
+    <button class="btn primary zombie-mode normal-mode" id="btnZombies">&#9654;&nbsp; Zombie Co-op</button>
+    <button class="btn primary zombie-mode zombie-only" id="btnZombieStart">&#9654;&nbsp; Start Zombie Co-op</button>
+    <button class="btn zombie-only" id="btnZombieBack">Back to Main Modes</button>
+    <button class="btn" id="btnSettings">Settings</button>
+    <button class="btn" id="btnHow">How to Play</button>
+    <div id="howPanel" class="hidden">
+      <div><b>W A S D</b> move</div>
+      <div><b>SHIFT</b> walk (silent)</div>
+      <div><b>CTRL / C</b> crouch</div>
+      <div><b>SPACE</b> jump</div>
+      <div><b>MOUSE 1</b> fire</div>
+      <div><b>MOUSE 2</b> AWP zoom / heavy knife</div>
+      <div><b>R</b> reload</div>
+      <div><b>B</b> buy menu</div>
+      <div><b>1 / 2 / 3</b> rifle / pistol / knife</div>
+      <div><b>Q</b> last weapon</div>
+      <div><b>F</b> inspect</div>
+      <div><b>TAB</b> scoreboard</div>
+      <div><b>ESC</b> pause</div>
+    </div>
+    <div id="menuFoot">
+      First to 30 kills or best score in 10:00 wins.<br>
+      Online: up to 8 players on the same server &middot; share the link with friends.<br>
+      Zombie Co-op: survive escalating rounds with friends against stronger infected.<br>
+      Fan-made tribute &middot; three.js &middot; every texture, model &amp; sound is generated in code.
+    </div>
+  </div>
+</div>
+
+<!-- ============ online join ============ -->
+<div id="onlinePanel" class="overlay hidden">
+  <div class="panel" style="min-width:340px">
+    <h2 style="font-size:22px;font-weight:800;letter-spacing:2px;margin-bottom:14px">ONLINE DEATHMATCH</h2>
+    <p style="font-size:13px;color:#9aa6b2;margin-bottom:16px">Join the shared server. Open the same URL in another browser tab or send the link to a friend.</p>
+    <div class="set-row" style="margin-bottom:12px">
+      <span>Player name</span>
+      <input type="text" id="onlineName" maxlength="20" style="background:#1b2128;color:#dfe6ec;border:1px solid #39424b;border-radius:3px;padding:6px 10px;font-family:inherit;width:160px">
+    </div>
+    <p id="onlineError" style="font-size:12px;color:#ff6b5e;min-height:18px;margin-bottom:8px"></p>
+    <button class="btn primary" id="btnOnlineJoin">Join Server</button>
+    <button class="btn" id="btnOnlineCancel">Cancel</button>
+  </div>
+</div>
+<div id="onlineStatus" class="overlay hidden" style="background:rgba(5,7,10,0.75);pointer-events:none">
+  <div class="panel" style="text-align:center;min-width:280px">
+    <h2 style="font-size:18px;font-weight:700;letter-spacing:2px" id="onlineStatusText">Connecting…</h2>
+  </div>
+</div>
+
+<!-- ============ pause ============ -->
+<div id="pause" class="overlay hidden">
+  <div class="panel">
+    <h2>PAUSED</h2>
+    <button class="btn primary" id="btnResume">Resume</button>
+    <button class="btn" id="btnPauseSettings">Settings</button>
+    <button class="btn" id="btnQuit">Exit to Menu</button>
+  </div>
+</div>
+
+<!-- ============ settings ============ -->
+<div id="settings" class="overlay hidden">
+  <div class="panel">
+    <h2>SETTINGS</h2>
+    <div class="set-row"><span>Sensitivity</span><input type="range" id="sensRange" min="0.1" max="3" step="0.05"><span class="val" id="sensVal"></span></div>
+    <div class="set-row"><span>Volume</span><input type="range" id="volRange" min="0" max="1" step="0.05"><span class="val"></span></div>
+    <div class="set-row"><span>Field of View</span><input type="range" id="fovRange" min="60" max="100" step="1"><span class="val" id="fovVal"></span></div>
+    <div class="set-row"><span>Bot difficulty</span><select id="diffSel"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
+    <div class="set-row"><span>Bots (next match)</span><input type="range" id="botsRange" min="2" max="10" step="1"><span class="val" id="botsVal"></span></div>
+    <div class="set-row"><span>Crosshair color</span><input type="color" id="xhColor"></div>
+    <div class="set-row"><span>Crosshair length</span><input type="range" id="xhSize" min="3" max="18" step="1"></div>
+    <div class="set-row"><span>Crosshair gap</span><input type="range" id="xhGap" min="0" max="14" step="1"></div>
+    <div class="set-row"><span>Crosshair thickness</span><input type="range" id="xhThick" min="1" max="4" step="0.5"></div>
+    <div class="set-row"><span>Center dot</span><input type="checkbox" id="xhDot"></div>
+    <button class="btn" id="btnSettingsBack">Back</button>
+  </div>
+</div>
+
+<!-- ============ match end ============ -->
+<div id="end" class="overlay hidden">
+  <div class="panel">
+    <h2 id="endTitle">VICTORY</h2>
+    <div id="endSub"></div>
+    <div class="sb-head"><span class="n">PLAYER</span><span>K</span><span>D</span><span>PING</span></div>
+    <div id="endBoard"></div>
+    <div id="endBtns">
+      <button class="btn primary" id="btnAgain">Play Again</button>
+      <button class="btn" id="btnEndMenu">Main Menu</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

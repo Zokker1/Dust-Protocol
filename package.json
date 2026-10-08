@@ -1,0 +1,13 @@
+{
+  "name": "dust-protocol",
+  "version": "1.0.0",
+  "description": "CS2-style browser FPS built with three.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  }
+}
