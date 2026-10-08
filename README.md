@@ -30,12 +30,3 @@ See How to Play in the main menu for movement, combat, buying, and co-op control
 - `lib/`: bundled Three.js library
 - `assets/audio/`: menu music
 
-## Publishing
-
-Local settings, dependencies, notes, and secret files are excluded by `.gitignore`.
-The HTTP server serves only the game page and public game assets.
-Review files before committing. Git commit author details and your GitHub account
-can identify you; choose your commit name and email accordingly.
-
-Audio assets retain their embedded origin information. Confirm that you have the
-necessary rights to distribute the assets before publishing.
